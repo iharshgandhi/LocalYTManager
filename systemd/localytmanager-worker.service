@@ -1,0 +1,34 @@
+[Unit]
+Description=LocalYTManager background download worker
+Documentation=https://github.com/localytmanager
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pihole
+Group=pihole
+WorkingDirectory=/opt/localytmanager
+Environment=LYTM_HOME=/opt/localytmanager
+Environment=PYTHONPATH=/opt/localytmanager/lib
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /opt/localytmanager/lib/lytm_worker.py
+Restart=always
+RestartSec=10
+
+# Deliberately the lowest priority on the box: RumblingPodcast and Pi-hole come
+# first. yt-dlp downloads are network-bound, so this costs it very little.
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=10
+IOWeight=10
+MemoryMax=220M
+
+NoNewPrivileges=yes
+PrivateTmp=no
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/localytmanager
+
+[Install]
+WantedBy=multi-user.target

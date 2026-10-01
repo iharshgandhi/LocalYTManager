@@ -1,0 +1,30 @@
+[Unit]
+Description=LocalYTManager web UI and JSON API
+Documentation=https://github.com/localytmanager
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pihole
+Group=pihole
+WorkingDirectory=/opt/localytmanager
+Environment=LYTM_HOME=/opt/localytmanager
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /opt/localytmanager/bin/server.py
+Restart=on-failure
+RestartSec=5
+
+# The Pi has ~415MB RAM shared with Pi-hole FTL. Keep this tool out of the way.
+Nice=19
+IOSchedulingClass=idle
+MemoryMax=180M
+
+NoNewPrivileges=yes
+PrivateTmp=no
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/localytmanager
+
+[Install]
+WantedBy=multi-user.target

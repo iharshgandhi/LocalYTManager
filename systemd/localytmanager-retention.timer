@@ -1,0 +1,12 @@
+[Unit]
+Description=Hourly LocalYTManager retention sweep
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1h
+# Spread load so this never collides with Pi-hole maintenance.
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

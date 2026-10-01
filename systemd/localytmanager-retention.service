@@ -1,0 +1,20 @@
+[Unit]
+Description=LocalYTManager retention sweep (erase downloads past their expiry)
+
+[Service]
+Type=oneshot
+User=pihole
+Group=pihole
+WorkingDirectory=/opt/localytmanager
+Environment=LYTM_HOME=/opt/localytmanager
+# lytmctl lives at /usr/local/bin as a symlink; PYTHONPATH is what makes its
+# ../lib import resolve when the unit runs it.
+Environment=PYTHONPATH=/opt/localytmanager/lib
+ExecStart=/opt/localytmanager/bin/lytmctl sweep
+Nice=19
+IOSchedulingClass=idle
+MemoryMax=120M
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/localytmanager

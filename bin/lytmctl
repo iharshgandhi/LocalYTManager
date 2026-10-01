@@ -1,0 +1,232 @@
+#!/usr/bin/env python3
+"""LocalYTManager — control script.
+
+Part of LocalYTManager by Harsh Gandhi (harshgandhi.com) / Buho Smart Tools
+(buho.co.in). Standard library only.
+
+Mirrors the rp-ctl pattern used by RumblingPodcast so both tools on this Pi
+behave the same way. Run with sudo for start/stop/restart/uninstall/sweep.
+
+  lytmctl status     show services, port, disk, library
+  lytmctl start      enable + start the web UI and worker
+  lytmctl stop       stop both
+  lytmctl restart    restart both
+  lytmctl disable    stop and prevent boot start
+  lytmctl enable     start and enable at boot
+  lytmctl sweep      run the retention sweep now
+  lytmctl logs       tail the worker log
+  lytmctl queue      list queued/running jobs
+  lytmctl uninstall  remove units and optionally downloaded media
+"""
+
+import os
+import subprocess
+import sys
+import time
+
+# Resolve our own directory THROUGH any symlink before deriving ../lib.
+# /usr/local/bin/lytmctl is a symlink to /opt/localytmanager/bin/lytmctl; without
+# this, __file__'s directory is /usr/local/bin and the ../lib lookup fails with
+# ModuleNotFoundError.
+_here = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
+_LIB = os.path.abspath(os.path.join(_here, os.pardir, "lib"))
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+
+# Default to the install tree so a bare `lytmctl` works from anywhere.
+os.environ.setdefault("LYTM_HOME", os.path.abspath(os.path.join(_here, os.pardir)))
+
+import lytm_common as C      # noqa: E402
+import lytm_worker            # noqa: E402
+
+UI_UNIT = "localytmanager.service"
+WORKER_UNIT = "localytmanager-worker.service"
+TIMER_UNIT = "localytmanager-retention.timer"
+
+GREEN, RED, YEL, DIM, OFF = "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[0m"
+
+
+def sh(cmd, check=False):
+    proc = subprocess.run(cmd, shell=isinstance(cmd, str),
+                          capture_output=True, text=True)
+    if check and proc.returncode != 0:
+        sys.stderr.write(proc.stderr or "")
+        sys.exit(proc.returncode)
+    return proc.stdout.strip()
+
+
+def need_root():
+    if os.geteuid() != 0:
+        print(RED + "This action needs sudo: sudo lytmctl " + sys.argv[1] + OFF)
+        sys.exit(1)
+
+
+def unit_state(unit):
+    out = sh(["systemctl", "is-active", unit])
+    return out or "inactive"
+
+
+def enabled(unit):
+    return sh(["systemctl", "is-enabled", unit]) or "disabled"
+
+
+def banner():
+    cfg = C.load_config()
+    print()
+    print("LocalYTManager %s" % C.VERSION)
+    print("-" * 58)
+    print("install      %s" % C.install_dir())
+    print("config       %s" % C.conf_path())
+    print("url          http://%s:%s/" % (
+        sh(["hostname", "-I"]).split()[0] if sh(["hostname", "-I"]) else "<pi-ip>", cfg["port"]))
+    print("retention    %s days" % cfg["retention_days"])
+    print()
+    for unit, label in ((UI_UNIT, "web ui  "), (WORKER_UNIT, "worker ")):
+        st = unit_state(unit)
+        colour = GREEN if st == "active" else RED
+        print("  %s %-16s %-9s (%s)" % (label, colour + st + OFF, "",
+                                       enabled(unit)))
+    print("  %s %-16s" % ("retention", unit_state(TIMER_UNIT)))
+    print()
+
+
+def cmd_status(_args):
+    cfg = C.load_config()
+    banner()
+    exe = C.find_ytdlp(cfg)
+    print("yt-dlp       %s" % C.ytdlp_version(cfg))
+    print("binary       %s" % (exe or "-"))
+
+    media_dir = os.path.join(C.install_dir(), cfg["media_dir"])
+    try:
+        st = os.statvfs(media_dir)
+        print("disk free    %.1f GiB of %.1f GiB" % (
+            st.f_bavail * st.f_frsize / 2**30, st.f_blocks * st.f_frsize / 2**30))
+    except OSError:
+        pass
+    print("TMPDIR       %s (NOT /tmp -- /tmp is a 30MB tmpfs here)"
+          % C.tmp_dir())
+    try:
+        free = open("/proc/meminfo").read()
+        avail = [l for l in free.splitlines() if l.startswith("MemAvailable")]
+        if avail:
+            print("mem available %s" % avail[0].split()[1])
+    except OSError:
+        pass
+
+    conn = C.connect()
+    try:
+        n_media = conn.execute("SELECT COUNT(*) c FROM media").fetchone()["c"]
+        n_jobs = conn.execute(
+            "SELECT COUNT(*) c FROM jobs WHERE status IN ('queued','running')"
+        ).fetchone()["c"]
+        total = conn.execute("SELECT COALESCE(SUM(bytes),0) b FROM media").fetchone()["b"]
+    finally:
+        conn.close()
+    print("library      %d item(s), %s" % (n_media, C.human_bytes(total)))
+    print("active jobs  %d" % n_jobs)
+    print()
+
+
+def cmd_queue(_args):
+    conn = C.connect()
+    try:
+        rows = conn.execute(
+            "SELECT id,title,kind,quality,status,phase,percent,message "
+            "FROM jobs WHERE status IN ('queued','running') ORDER BY created_at"
+        ).fetchall()
+    finally:
+        conn.close()
+    if not rows:
+        print("nothing queued")
+        return
+    for r in rows:
+        print("[%-8s] %-6s %-12s %s" % (r["status"], r["kind"],
+                                        "%.0f%%" % (r["percent"] or 0),
+                                        r["title"]))
+        print("           %s" % r["message"])
+
+
+def cmd_sweep(_args):
+    removed, expired = lytm_worker.enforce_retention(C.load_config())
+    if removed:
+        print("%sremoved %d expired file(s)%s" % (GREEN, removed, OFF))
+    elif expired:
+        print("%s%d item(s) matched but dry-run left them in place%s"
+              % (YEL, expired, OFF))
+    else:
+        print("nothing has expired yet")
+
+
+def cmd_logs(_args):
+    sh(["journalctl", "-u", WORKER_UNIT, "-u", UI_UNIT, "-f", "--no-pager"])
+
+
+def cmd_start(_args):
+    need_root()
+    sh(["systemctl", "enable", "--now", TIMER_UNIT], check=True)
+    sh(["systemctl", "restart", WORKER_UNIT], check=True)
+    sh(["systemctl", "restart", UI_UNIT], check=True)
+    time.sleep(1.5)
+    banner()
+
+
+def cmd_stop(_args):
+    need_root()
+    sh(["systemctl", "stop", UI_UNIT, WORKER_UNIT])
+    print("stopped (queued downloads are preserved and resume on start)")
+
+
+def cmd_restart(_args):
+    need_root()
+    cmd_start(None)
+
+
+def cmd_disable(_args):
+    need_root()
+    sh(["systemctl", "disable", "--now", UI_UNIT, WORKER_UNIT, TIMER_UNIT])
+    print("disabled at boot; nothing of RumblingPodcast was touched")
+
+
+def cmd_enable(_args):
+    cmd_start(None)
+
+
+def cmd_uninstall(args):
+    need_root()
+    purge = "--purge" in args
+    sh(["systemctl", "disable", "--now", UI_UNIT, WORKER_UNIT, TIMER_UNIT])
+    for unit in (UI_UNIT, WORKER_UNIT, "localytmanager-retention.service", TIMER_UNIT):
+        sh(["rm", "-f", "/etc/systemd/system/" + unit])
+    sh(["systemctl", "daemon-reload"])
+    sh(["rm", "-f", "/usr/local/bin/lytmctl"])
+    print("units removed")
+    if purge:
+        sh(["rm", "-rf", C.install_dir()])
+        print("install dir removed")
+    else:
+        print("kept %s (re-run with --purge to delete media and config)" % C.install_dir())
+
+
+COMMANDS = {
+    "status": cmd_status, "start": cmd_start, "stop": cmd_stop,
+    "restart": cmd_restart, "disable": cmd_disable, "enable": cmd_enable,
+    "sweep": cmd_sweep, "logs": cmd_logs, "queue": cmd_queue,
+    "uninstall": cmd_uninstall,
+}
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
+        print(__doc__)
+        sys.exit(0)
+    fn = COMMANDS.get(sys.argv[1])
+    if not fn:
+        print(RED + "unknown command: %s" % sys.argv[1] + OFF)
+        print("try: status, start, stop, restart, sweep, logs, queue, uninstall")
+        sys.exit(2)
+    fn(sys.argv[2:])
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LocalYTManager</title>
+<meta name="author" content="Harsh Gandhi (harshgandhi.com) / Buho Smart Tools (buho.co.in)">
+<meta name="description" content="Local YouTube downloader for Raspberry Pi. Harsh Gandhi / Buho Smart Tools.">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">▶</span>
+    <div>
+      <h1>LocalYTManager</h1>
+      <p class="sub" id="sub-status">connecting…</p>
+    </div>
+  </div>
+  <p class="credit">LocalYTManager — Harsh Gandhi (harshgandhi.com) · Buho Smart Tools (buho.co.in)</p>
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="download" role="tab">Download</button>
+    <button class="tab" data-tab="library" role="tab">
+      Library <span class="pill" id="lib-count">0</span>
+    </button>
+    <button class="tab" data-tab="activity" role="tab">
+      Activity <span class="pill" id="job-count">0</span>
+    </button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ============================ DOWNLOAD ============================ -->
+<section class="panel active" id="panel-download">
+
+  <div class="card">
+    <label class="field-label" for="url">Paste a YouTube video or playlist URL</label>
+    <div class="urlrow">
+      <input id="url" type="text" spellcheck="false" autocomplete="off"
+             placeholder="https://www.youtube.com/watch?v=…">
+      <button class="btn primary" id="btn-scan">Scan</button>
+    </div>
+    <label class="checkline">
+      <input type="checkbox" id="force-playlist">
+      <span>Treat as playlist (adds every entry to the queue)</span>
+    </label>
+    <p class="hint">Audio and video stay on this Pi and are erased
+       <strong id="retention-hint">7</strong> days after download.</p>
+  </div>
+
+  <div id="scan-status" class="scanstatus hidden"></div>
+  <div id="result"></div>
+
+</section>
+
+<!-- ============================ LIBRARY ============================ -->
+<section class="panel" id="panel-library">
+  <div class="card toolbar">
+    <div class="toolbar-left">
+      <input type="search" id="lib-search" placeholder="Filter by title…">
+      <select id="lib-filter">
+        <option value="all">All</option>
+        <option value="video">Video</option>
+        <option value="audio">Audio</option>
+      </select>
+    </div>
+    <div class="toolbar-right">
+      <button class="btn" id="btn-clean-expired">Delete expired</button>
+      <button class="btn danger" id="btn-clean-all">Delete all</button>
+    </div>
+  </div>
+  <p class="hint" id="lib-summary"></p>
+  <div id="library-grid" class="grid"></div>
+</section>
+
+<!-- ============================ ACTIVITY ============================ -->
+<section class="panel" id="panel-activity">
+  <p class="hint">Downloads run on the Pi itself, so closing this page or
+     navigating away never stops one. This list survives refreshes.</p>
+  <div id="jobs-list"></div>
+</section>
+
+</main>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
