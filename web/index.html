@@ -1,90 +1,200 @@
-<!DOCTYPE html>
+<!doctype html>
+<!--
+  LocalYTManager — local YouTube downloader for Raspberry Pi
+  Copyright (C) 2026 Harsh Gandhi (harshgandhi.com) / Buho Smart Tools (buho.co.in)
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Theme: "Patio" (theme.css, from PiHome) + app.css
+-->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LocalYTManager</title>
+<meta name="color-scheme" content="light">
 <meta name="author" content="Harsh Gandhi (harshgandhi.com) / Buho Smart Tools (buho.co.in)">
-<meta name="description" content="Local YouTube downloader for Raspberry Pi. Harsh Gandhi / Buho Smart Tools.">
-<link rel="stylesheet" href="/style.css">
+<meta name="description" content="Download YouTube audio and video to a Raspberry Pi. Experimental, GPL-3.0-or-later.">
+<link rel="stylesheet" href="/theme.css">
+<link rel="stylesheet" href="/app.css">
 </head>
-<body>
+<body class="patio">
 
-<header class="topbar">
-  <div class="brand">
-    <span class="logo">▶</span>
-    <div>
-      <h1>LocalYTManager</h1>
-      <p class="sub" id="sub-status">connecting…</p>
+<!-- The reja, one per state. Inline so there is no extra request and no
+     chance of a missing icon reading as "no status". -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="reja-ok" viewBox="0 0 20 20">
+      <rect x="2.5" y="2.5" width="15" height="15" rx="1.5"
+            fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <path d="M6 2.5v15M10 2.5v15M14 2.5v15M2.5 6.5h15M2.5 10h15M2.5 13.5h15"
+            stroke="currentColor" stroke-width="1" opacity=".55"/>
+    </symbol>
+    <symbol id="reja-busy" viewBox="0 0 20 20">
+      <rect x="2.5" y="2.5" width="15" height="15" rx="1.5"
+            fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <path d="M6 2.5v15M14 2.5v15M2.5 10h15"
+            stroke="currentColor" stroke-width="1" opacity=".55"/>
+      <path d="M7 13.5c1.6-1.2 4.4-1.2 6 0" fill="none"
+            stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="reja-warn" viewBox="0 0 20 20">
+      <rect x="2.5" y="2.5" width="15" height="15" rx="1.5"
+            fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <path d="M2.5 6.5h15M2.5 10h15M6 2.5v15M14 2.5v15"
+            stroke="currentColor" stroke-width="1" opacity=".55"/>
+      <path d="M7.5 14.5l5-9" fill="none" stroke="currentColor"
+            stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="reja-down" viewBox="0 0 20 20">
+      <rect x="2.5" y="2.5" width="15" height="15" rx="1.5"
+            fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <path d="M6 2.5v15M10 2.5v15M14 2.5v15M2.5 6.5h15M2.5 10h15M2.5 13.5h15"
+            stroke="currentColor" stroke-width="1" opacity=".35"/>
+      <path d="M5.5 5.5l9 9M14.5 5.5l-9 9" fill="none"
+            stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="reja-unknown" viewBox="0 0 20 20">
+      <rect x="2.5" y="2.5" width="15" height="15" rx="1.5"
+            fill="none" stroke="currentColor" stroke-width="1.6"
+            stroke-dasharray="3 2.4"/>
+      <circle cx="10" cy="10" r="1.7" fill="currentColor"/>
+    </symbol>
+  </defs>
+</svg>
+
+<main class="patio-page ytm-page">
+
+  <header class="patio-header patio-cornice patio-brick patio-azulejo">
+    <div class="patio-header__row">
+      <div class="ytm-brand">
+        <!-- The Sol de Mayo, as a mark. -->
+        <svg class="patio-sol" viewBox="0 0 40 40" aria-hidden="true">
+          <circle cx="20" cy="20" r="8" fill="none"
+                  stroke="currentColor" stroke-width="2"/>
+          <circle cx="20" cy="20" r="2.6" fill="currentColor"/>
+          <g stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M20 3v4M20 33v4M3 20h4M33 20h4"/>
+            <path d="M8 8l2.8 2.8M29.2 29.2L32 32M32 8l-2.8 2.8M10.8 29.2L8 32"/>
+          </g>
+        </svg>
+        <div class="ytm-brand__text">
+          <h1 class="ytm-title">LocalYTManager</h1>
+          <p class="ytm-sub" id="sub-status">connecting&hellip;</p>
+        </div>
+      </div>
+      <div class="patio-header__meta">
+        <span class="patio-chip" id="chip-service">service</span>
+        <span class="patio-chip" id="chip-retention">&mdash;</span>
+      </div>
     </div>
-  </div>
-  <p class="credit">LocalYTManager — Harsh Gandhi (harshgandhi.com) · Buho Smart Tools (buho.co.in)</p>
-  <nav class="tabs" role="tablist">
-    <button class="tab active" data-tab="download" role="tab">Download</button>
-    <button class="tab" data-tab="library" role="tab">
-      Library <span class="pill" id="lib-count">0</span>
-    </button>
-    <button class="tab" data-tab="activity" role="tab">
-      Activity <span class="pill" id="job-count">0</span>
-    </button>
-  </nav>
-</header>
 
-<main>
+    <nav class="ytm-tabs" role="tablist" aria-label="Sections">
+      <button class="ytm-tab" role="tab" data-tab="download"
+              aria-selected="true" aria-controls="panel-download" id="tab-download">
+        Download
+      </button>
+      <button class="ytm-tab" role="tab" data-tab="library"
+              aria-selected="false" aria-controls="panel-library" id="tab-library">
+        Library <span class="ytm-tab__count" id="count-library">0</span>
+      </button>
+      <button class="ytm-tab" role="tab" data-tab="activity"
+              aria-selected="false" aria-controls="panel-activity" id="tab-activity">
+        Activity <span class="ytm-tab__count" id="count-activity">0</span>
+      </button>
+    </nav>
+  </header>
 
-<!-- ============================ DOWNLOAD ============================ -->
-<section class="panel active" id="panel-download">
+  <!-- ======================= DOWNLOAD ======================= -->
+  <section class="ytm-panel" id="panel-download"
+           role="tabpanel" aria-labelledby="tab-download">
 
-  <div class="card">
-    <label class="field-label" for="url">Paste a YouTube video or playlist URL</label>
-    <div class="urlrow">
-      <input id="url" type="text" spellcheck="false" autocomplete="off"
-             placeholder="https://www.youtube.com/watch?v=…">
-      <button class="btn primary" id="btn-scan">Scan</button>
+    <div class="patio-panel patio-cornice">
+      <div class="ytm-panel__head">
+        <h2 class="ytm-panel__title">Paste a video or playlist</h2>
+        <p class="ytm-panel__note" id="retention-note">kept 7 days</p>
+      </div>
+
+      <div class="ytm-scan">
+        <div class="ytm-scan__field">
+          <label class="patio-label" for="url">YouTube URL</label>
+          <input id="url" type="text" spellcheck="false" autocomplete="off"
+                 inputmode="url"
+                 placeholder="https://www.youtube.com/watch?v=…">
+        </div>
+        <button class="ytm-btn" id="btn-scan" type="button">Scan</button>
+      </div>
+
+      <div class="ytm-scan__opts">
+        <label class="ytm-check">
+          <input type="checkbox" id="force-playlist">
+          <span>Treat as playlist</span>
+        </label>
+        <p class="ytm-hint" style="margin:0">
+          Audio and video stay on this Pi and are erased
+          <b id="retention-hint">7</b> days after download.
+        </p>
+      </div>
+
+      <p class="ytm-msg" id="scan-status" hidden></p>
     </div>
-    <label class="checkline">
-      <input type="checkbox" id="force-playlist">
-      <span>Treat as playlist (adds every entry to the queue)</span>
-    </label>
-    <p class="hint">Audio and video stay on this Pi and are erased
-       <strong id="retention-hint">7</strong> days after download.</p>
-  </div>
 
-  <div id="scan-status" class="scanstatus hidden"></div>
-  <div id="result"></div>
+    <div id="result"></div>
+  </section>
 
-</section>
-
-<!-- ============================ LIBRARY ============================ -->
-<section class="panel" id="panel-library">
-  <div class="card toolbar">
-    <div class="toolbar-left">
-      <input type="search" id="lib-search" placeholder="Filter by title…">
-      <select id="lib-filter">
-        <option value="all">All</option>
-        <option value="video">Video</option>
-        <option value="audio">Audio</option>
-      </select>
+  <!-- ======================= LIBRARY ======================= -->
+  <section class="ytm-panel" id="panel-library"
+           role="tabpanel" aria-labelledby="tab-library" hidden>
+    <div class="patio-panel patio-cornice">
+      <div class="ytm-toolbar">
+        <div class="ytm-toolbar__filters">
+          <input type="search" id="lib-search" placeholder="Filter by title…"
+                 aria-label="Filter library by title">
+          <select id="lib-filter" aria-label="Filter library by kind">
+            <option value="all">All</option>
+            <option value="video">Video</option>
+            <option value="audio">Audio</option>
+          </select>
+        </div>
+        <div class="ytm-toolbar__actions">
+          <button class="ytm-btn ytm-btn--ghost ytm-btn--sm" id="btn-clean-expired"
+                  type="button">Delete expired</button>
+          <button class="ytm-btn ytm-btn--danger ytm-btn--sm" id="btn-clean-all"
+                  type="button">Delete all</button>
+        </div>
+      </div>
+      <p class="ytm-hint" id="lib-summary" style="margin:0 0 var(--s-4)"></p>
+      <div id="library-grid"></div>
     </div>
-    <div class="toolbar-right">
-      <button class="btn" id="btn-clean-expired">Delete expired</button>
-      <button class="btn danger" id="btn-clean-all">Delete all</button>
-    </div>
-  </div>
-  <p class="hint" id="lib-summary"></p>
-  <div id="library-grid" class="grid"></div>
-</section>
+  </section>
 
-<!-- ============================ ACTIVITY ============================ -->
-<section class="panel" id="panel-activity">
-  <p class="hint">Downloads run on the Pi itself, so closing this page or
-     navigating away never stops one. This list survives refreshes.</p>
-  <div id="jobs-list"></div>
-</section>
+  <!-- ======================= ACTIVITY ======================= -->
+  <section class="ytm-panel" id="panel-activity"
+           role="tabpanel" aria-labelledby="tab-activity" hidden>
+    <div class="patio-panel patio-cornice">
+      <div class="ytm-panel__head">
+        <h2 class="ytm-panel__title">Downloads</h2>
+        <p class="ytm-panel__note">runs on the Pi, not in this tab</p>
+      </div>
+      <p class="ytm-hint" style="margin:0 0 var(--s-4)">
+        Closing this page never stops a transfer &mdash; the Pi holds the queue
+        itself, so this list survives a refresh and another device.
+      </p>
+      <div id="jobs-list"></div>
+    </div>
+  </section>
+
+  <footer class="ytm-foot">
+    <span>yt-dlp <b id="foot-ytdlp">&mdash;</b></span>
+    <span>library <b id="foot-library">0</b></span>
+    <span>disk free <b id="foot-disk">&mdash;</b></span>
+    <span>Harsh Gandhi &middot; Buho Smart Tools</span>
+  </footer>
 
 </main>
 
-<div id="toast" class="toast hidden"></div>
+<div class="ytm-modal" id="modal" hidden role="dialog" aria-modal="true"
+     aria-labelledby="modal-title"></div>
+
+<div class="ytm-toast" id="toast" hidden role="status" aria-live="polite"></div>
 
 <script src="/app.js"></script>
 </body>

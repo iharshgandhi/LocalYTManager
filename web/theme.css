@@ -1,0 +1,735 @@
+/* ==========================================================================
+   PATIO — a tiles-and-terracotta theme for LAN dashboards
+   Upstream: PiHome, docs/THEME-SPEC.md. Free to reuse and remix (GPL-3.0-or-later).
+
+   This file is the upstream theme, carried over verbatim so LocalYTManager
+   shares one design language with the Pi home page. Everything below this
+   banner is PiHome's work, unmodified; LocalYTManager's own components live in
+   app.css, which layers on top of these tokens and ornaments.
+
+   Copyright (C) 2026 Harsh Gandhi (harshgandhi.com) / Buho Smart Tools (buho.co.in)
+   SPDX-License-Identifier: GPL-3.0-or-later
+   ========================================================================== */
+
+/* --- Box model ---------------------------------------------------------- */
+
+/* One box model for the whole theme. Without this, any element given a
+   percentage width plus padding or a border overflows its container, which is
+   how the last tile ended up 37px past the page edge. */
+.patio-page,
+.patio-page *,
+.patio-page *::before,
+.patio-page *::after {
+  box-sizing: border-box;
+}
+
+/* --- 2. Tokens ---------------------------------------------------------- */
+
+:root {
+  /* Accents: brick, flag blue, pampas ochre, olive, wine, slate. */
+  --terracotta:      #a8442a;
+  --terracotta-deep: #7d2f1c;
+  --celeste:         #4a7fa5;
+  --celeste-deep:    #2f5c7c;
+  /* Ochre. The bright #c08a2e is 2.45:1 on --stone-1, which is fine for a
+     large headline but fails the 3:1 that a GRAPHICAL object needs. Ochre is
+     used as a graphical accent (left rail, reja), so --ocre is the dark
+     variant throughout and the rail uses --ocre-deep for extra margin. */
+  --ocre:        #a5721f;  /* 3.37:1 on --stone-1 — clears non-text AA */
+  --ocre-deep:   #8a5f16;
+  --olive:           #6b7a4a;
+  --wine:            #7a2f3f;
+  --slate:           #5a6472;
+
+  /* Surfaces: limewash, raised, inset. */
+  --stone-0: #f6f1e7;
+  --stone-1: #efe6d6;
+  --stone-2: #e4d8c3;
+  --line:    #d3c3a8;
+  --ink:      #2b2119;
+  --ink-soft: #6b5c4c;
+  /* --ink-faint is for genuinely decorative text only. It measures 2.66:1 on
+     --stone-1, which is a hard WCAG fail, so it must never carry a stat label
+     -- the text you use to identify a number. Labels use --ink-soft (5.2:1). */
+  --ink-faint:#9c8b78;
+  /* Stat labels and kickers: the darkest tone that still reads as secondary.
+     5.2:1 on --stone-1, comfortably over the 4.5:1 AA threshold. */
+  --ink-label:#6b5c4c;
+
+  /* 4px scale. */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px;
+  --s-5: 24px; --s-6: 32px; --s-7: 48px; --s-8: 64px;
+
+  /* Facades are not rounded. */
+  --r-sm: 3px; --r-md: 5px; --r-pill: 999px;
+
+  /* Two layers only: cornice highlight, then body shadow. */
+  --shadow-raised:
+     0 1px 0 rgba(255, 255, 255, .55) inset,
+     0 1px 2px rgba(43, 33, 25, .10),
+     0 8px 20px -12px rgba(43, 33, 25, .35);
+  --shadow-pressed: 0 2px 6px rgba(43, 33, 25, .18) inset;
+
+  --t-display: clamp(1.75rem, 4vw, 2.5rem);
+  --t-tile: 1.125rem;
+  --t-lead: 1.5rem;
+  --t-body: 0.9375rem;
+  --t-label: 0.6875rem;
+  --t-mono: 0.8125rem;
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+             "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino,
+                  "Book Antiqua", Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+               "Liberation Mono", monospace;
+
+  --maxw: 76rem;
+  --ease: cubic-bezier(.2, .7, .3, 1);
+
+  /* Cornice layers, named so hover/focus can extend the profile instead of
+     replacing it (a later `box-shadow` declaration overwrites the whole list). */
+  --cornice-light:
+    inset 0 2px 0 rgba(255, 255, 255, .70),
+    inset 0 3px 0 rgba(255, 255, 255, .30);
+  --cornice-shade: inset 0 4px 0 rgba(43, 33, 25, .14);
+  /* The baranda. --line on --stone-1 is only 1.4:1, so the hairline under the
+     headline was effectively invisible -- and that hairline is a core part of
+     the facade reading. This is a separate, darker stone for rules. */
+  --rule: #bfae8c;
+}
+
+/* Accent slots, addressed by the tile's data-accent.
+
+   The catch-all MUST come first. `[data-accent]` and `[data-accent="celeste"]`
+   have identical specificity (0,1,0), so whichever comes later wins — with the
+   fallback last it silently overrode every named accent and all three tiles
+   rendered with the same slate rail. */
+[data-accent]              { --accent: var(--slate);      --accent-deep: #434c58; }
+[data-accent="terracotta"] { --accent: var(--terracotta); --accent-deep: var(--terracotta-deep); }
+[data-accent="celeste"]    { --accent: var(--celeste);    --accent-deep: var(--celeste-deep); }
+[data-accent="ocre"]       { --accent: var(--ocre);       --accent-deep: var(--ocre-deep); }
+[data-accent="olive"]      { --accent: var(--olive);      --accent-deep: #4f5c34; }
+[data-accent="wine"]       { --accent: var(--wine);       --accent-deep: #5a1f2c; }
+[data-accent="slate"]      { --accent: var(--slate);      --accent-deep: #434c58; }
+
+/* --- 3. Textures -------------------------------------------------------- */
+
+/* Ladrillo visto: a 4x2 staggered brick line, low enough to read as tone. */
+.patio-brick { position: relative; }
+.patio-brick::before {
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(90deg,
+      var(--line) 0 1px, transparent 1px 24px),
+    repeating-linear-gradient(0deg,
+      var(--line) 0 1px, transparent 1px 12px);
+  background-size: 24px 12px, 24px 12px;
+  opacity: .22;
+  border-radius: inherit;
+}
+
+/* Grain: kills banding on cheap panels across large flat areas. */
+.patio-page::after {
+  content: "";
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: radial-gradient(rgba(43, 33, 25, .5) .5px, transparent .5px);
+  background-size: 2px 2px;
+  opacity: .05;
+}
+
+/* Azulejo: a four-petal rosette, header only. Built from rotated ellipses
+   so it needs no image file. */
+.patio-azulejo { position: relative; }
+.patio-azulejo::after {
+  content: "";
+  position: absolute; inset: 0;
+  /* No negative z-index here. With `z-index:-1` the rosette was painted
+     *behind* the header's own opaque background and never showed at all --
+     the ornament was silently dead. Stacking it above the surface at low
+     opacity is what actually renders it. */
+  pointer-events: none;
+  opacity: .09;
+  background-image:
+    radial-gradient(ellipse 9px 15px at 50% 22%, var(--celeste) 60%, transparent 62%),
+    radial-gradient(ellipse 9px 15px at 50% 78%, var(--celeste) 60%, transparent 62%),
+    radial-gradient(ellipse 15px 9px at 22% 50%, var(--celeste) 60%, transparent 62%),
+    radial-gradient(ellipse 15px 9px at 78% 50%, var(--celeste) 60%, transparent 62%),
+    radial-gradient(circle 5px at 50% 50%, var(--celeste) 70%, transparent 72%);
+  background-size: 64px 64px;
+}
+
+/* --- Cornice: the profile shared by the page and every tile ------------- */
+
+/* Implemented as an inset shadow rather than a pseudo-element. The header
+   stacks three ornaments at once (cornice, brick, azulejo) and there are only
+   two pseudo-elements to spend, so the cornice -- the one that carries the
+   architecture -- takes the reliable route. Two hairlines: the light one is
+   the light catching the cornice, the dark one its shadow. */
+.patio-cornice {
+  position: relative;
+  /* Named so the hover/focus state can add to the cornice rather than replace
+     it. `box-shadow` is a single list: a later rule that sets it wipes every
+     layer, which made the cornice vanish the instant a tile was hovered. */
+  box-shadow:
+    var(--cornice-light),
+    var(--cornice-shade),
+    var(--shadow-raised);
+}
+
+/* --- 4. Page ------------------------------------------------------------ */
+
+/* The canvas is limewash, not white. Warm stone cards floating on pure white
+   break the illusion more than any missing ornament, and --stone-0 was
+   defined as the page ground but never actually applied to the body. */
+.patio {
+  margin: 0;
+  background: var(--stone-0);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+.patio-page {
+  position: relative;
+  z-index: 1;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: var(--s-6) var(--s-5) var(--s-8);
+  /* Grow to fill a tall viewport so the footer sits at the bottom of the
+     screen rather than floating halfway up a mostly empty page. */
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.patio-header {
+  position: relative;
+  flex: none;
+  margin-bottom: var(--s-6);
+  /* Matches .patio-tile so the header text and the tile text share a left
+     edge. At 24px against the tiles' 16px the two card families visibly
+     disagreed about where content starts. */
+  padding: var(--s-5) var(--s-4) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--stone-1);
+  /* No box-shadow here: .patio-cornice supplies it, and a second declaration
+     would silently replace the cornice hairlines. */
+  overflow: hidden;
+}
+
+.patio-header__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+
+.patio-header__title {
+  margin: var(--s-3) 0 0;
+  font-family: var(--font-display);
+  font-size: var(--t-display);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -.015em;
+  color: var(--ink);
+}
+
+.patio-header__sub {
+  margin: var(--s-2) 0 0;
+  font-size: var(--t-body);
+  color: var(--ink-soft);
+  max-width: 44ch;
+}
+
+.patio-header__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  align-items: center;
+}
+
+/* The Sol de Mayo, reduced to a mark: a ring of rays. */
+.patio-sol {
+  /* display:block, not the SVG default of inline. An inline replaced element
+     sits on the text baseline, so the line box reserves half-leading above it
+     and below -- which pushed the mark 32px down and opened a dead band at the
+     top of the header. A block box has no baseline and no phantom leading. */
+  display: block;
+  width: 40px; height: 40px;
+  color: var(--terracotta);
+  flex: none;
+}
+
+/* Uppercase tracked micro-label: the cheapest way to look instrumented. */
+.patio-label {
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* --- 4. The tile grid --------------------------------------------------- */
+
+/* The tile section takes the slack so the footer is pushed to the bottom. */
+.patio-page > section[aria-label] {
+  flex: 1 0 auto;
+}
+
+.patio-tiles {
+  display: grid;
+  /* auto-FIT, not auto-fill. auto-fit collapses the empty tracks, so three
+     tiles stretch to fill the row; auto-fill reserves the empty 4th track and
+     leaves a ~380px dead rectangle to the right of the last tile, which reads
+     as an unfinished page. (A 0px track in the computed value is auto-fit
+     working correctly, not a bug.) */
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--s-5);
+  align-items: stretch;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* The <li> is the grid item. It must stay a plain block: making it a flex or
+   grid container lets the anchor shrink below its content width, which had the
+   first tile at 290px and the last at 212px in a 384px track. The anchor
+   reaches full width with width:100% alone. */
+.patio-tiles > li {
+  display: block;
+  min-width: 0;
+}
+
+.patio-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  /* The grid stretches each <li>, but the <a> inside it is not a grid item,
+     so without these it sizes to its own content: the plinths land at
+     different heights and the tiles stop sharing a baseline. */
+  width: 100%;
+  height: 100%;
+  min-height: 9.5rem;
+  padding: var(--s-4) var(--s-4) 0;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--stone-1);
+  /* No box-shadow here: .patio-cornice supplies the cornice profile and the
+     lift. This rule comes later in the file and has the same specificity, so
+     a declaration here would win on source order and silently erase the
+     cornice -- which is exactly what was happening. */
+  color: inherit;
+  text-decoration: none;
+  overflow: hidden;
+  transition: transform .18s var(--ease), box-shadow .18s var(--ease),
+              border-left-width .18s var(--ease);
+}
+
+.patio-tile:hover,
+.patio-tile:focus-visible {
+  transform: translateY(-2px);
+  /* The accent rail thickens via an inset shadow, NOT border-left-width.
+     Growing the border reflows the whole tile: every child shifts 2px right
+     on hover, which reads as a jolt rather than a lift. */
+  box-shadow:
+     inset 2px 0 0 var(--accent),
+     var(--cornice-light),
+     var(--cornice-shade),
+     0 1px 0 rgba(255, 255, 255, .55) inset,
+     0 2px 4px rgba(43, 33, 25, .12),
+     0 16px 30px -16px rgba(43, 33, 25, .45);
+}
+
+.patio-tile:focus-visible {
+  outline: 2px solid var(--ocre);
+  outline-offset: 2px;
+}
+
+.patio-tile:active { transform: translateY(0); }
+
+.patio-tile__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  margin-bottom: var(--s-2);
+}
+
+.patio-tile__kicker {
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  /* --ink-label, not --ink-faint: this text names the tool. */
+  color: var(--ink-label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.patio-tile__name {
+  margin: 0;
+  font-size: var(--t-tile);
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -.01em;
+}
+
+.patio-tile__blurb {
+  margin: 2px 0 0;
+  font-size: .8125rem;
+  color: var(--ink-soft);
+}
+
+.patio-tile__lead {
+  margin: var(--s-3) 0 0;
+  font-size: var(--t-lead);
+  font-weight: 500;
+  line-height: 1.15;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  /* overflow-wrap, not word-break. `word-break: break-word` splits a long
+     value like "RumblingPodcast" mid-word at any character; this only breaks
+     when a single word genuinely cannot fit. */
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.patio-tile__note {
+  margin: var(--s-2) 0 0;
+  font-size: .8125rem;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  /* Reserve the row even when empty. Without this, a tile carrying a note
+     pushes its rule and whole stat grid down, so the baranda line steps
+     across the row instead of running level through every facade. */
+  min-height: 1.2em;
+}
+
+/* The baranda: a hairline under the headline. Sits at the same offset in every
+   tile so it reads as one continuous line across the row. */
+.patio-tile__rule {
+  height: 1px;
+  margin: var(--s-3) 0 var(--s-3);
+  background: var(--rule);
+  opacity: 1;
+}
+
+/* Progress: a static bar, not just the animated sweep. The sweep conveys
+   nothing in a screenshot, in print, or under prefers-reduced-motion, and it
+   is the only thing marking a busy tile -- so the bar has to exist without it.
+   --progress (0-100) is set inline by the renderer. */
+.patio-tile__progress {
+  margin-top: var(--s-2);
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--stone-2);
+  overflow: hidden;
+  box-shadow: inset 0 1px 1px rgba(90, 70, 40, .18);
+}
+.patio-tile__progress::after {
+  content: "";
+  display: block;
+  height: 100%;
+  width: var(--progress, 0%);
+  background: linear-gradient(90deg, #a8761f, var(--ocre));
+  border-radius: var(--r-pill);
+  transition: width .4s var(--ease);
+}
+
+.patio-tile__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-2) var(--s-4);
+  margin: 0 0 var(--s-4);
+  padding: 0;
+}
+
+.patio-stat { min-width: 0; }
+
+.patio-stat__label {
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  /* This label is how you identify the number beside it. At --ink-faint it
+     measured 2.66:1 and the stat grid read as a column of orphan figures. */
+  color: var(--ink-label);
+}
+
+.patio-stat__value {
+  font-family: var(--font-mono);
+  font-size: var(--t-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.patio-stat__hint {
+  display: block;
+  font-size: .6875rem;
+  color: var(--ink-label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The step at the bottom of the facade. */
+.patio-tile__plinth {
+  margin: auto calc(var(--s-4) * -1) 0;
+  padding: var(--s-2) var(--s-4);
+  background: var(--stone-2);
+  border-top: 1px solid var(--line);
+  font-size: .6875rem;
+  color: var(--ink-soft);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.patio-tile__error {
+  color: var(--wine);
+  font-size: .6875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- 5. The reja: state without relying on colour ----------------------- */
+
+.patio-reja {
+  width: 20px; height: 20px;
+  flex: none;
+  color: var(--accent);
+}
+.patio-tile[data-state="ok"]       .patio-reja { color: var(--celeste); }
+.patio-tile[data-state="busy"]     .patio-reja { color: var(--ocre); }
+.patio-tile[data-state="warn"]     .patio-reja { color: var(--ocre); }
+.patio-tile[data-state="down"]     .patio-reja { color: var(--wine); }
+.patio-tile[data-state="unknown"]  .patio-reja { color: var(--ink-faint); }
+
+.patio-tile[data-state="warn"]     { border-left-color: var(--ocre); }
+.patio-tile[data-state="down"]     { border-left-color: var(--wine); }
+.patio-tile[data-state="unknown"]  { border-left-color: var(--ink-faint); }
+
+/* A down headline must not look like a healthy metric. "unreachable" in the
+   same near-black as "4,554 blocked" read as a value, not a failure. */
+.patio-tile[data-state="down"] .patio-tile__lead { color: var(--wine); }
+.patio-tile[data-state="down"] .patio-tile__kicker { color: var(--wine); }
+
+/* Busy is worth a warm headline so it is distinguishable at a glance from an
+   idle tool reporting a count. 6.5:1 on --stone-1, still AA. */
+.patio-tile[data-state="busy"] .patio-tile__lead { color: #6b4a0e; }
+
+/* --- 5. Luz: the one animation in the theme ----------------------------- */
+
+@keyframes patio-luz {
+  0%   { transform: translateX(-120%) skewX(-18deg); opacity: 0; }
+  35%  { opacity: .85; }
+  100% { transform: translateX(220%) skewX(-18deg); opacity: 0; }
+}
+
+.patio-busy {
+  position: relative;
+  overflow: hidden;
+}
+.patio-busy::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg,
+    transparent, rgba(255, 255, 255, .55), transparent);
+  width: 40%;
+  animation: patio-luz 1.6s var(--ease) infinite;
+  pointer-events: none;
+}
+
+/* --- 6. Chips, buttons, panels, fields --------------------------------- */
+
+.patio-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: 3px var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--stone-2);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.patio-chip--live { color: var(--celeste-deep); border-color: #b9cfdd; background: #e3edf3; }
+.patio-chip--warn { color: #7a5a12; border-color: #ddc896; background: #f4ead0; }
+.patio-chip--down { color: #6b2532; border-color: #d8b3bb; background: #f2e0e3; }
+.patio-chip--busy { color: #7a5a12; border-color: #ddc896; background: #f4ead0; }
+
+.patio-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-4);
+  border: 1px solid var(--terracotta-deep);
+  border-radius: var(--r-sm);
+  background: var(--terracotta);
+  color: #fdf8f0;
+  font: inherit;
+  font-size: .875rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .22) inset, 0 1px 2px rgba(43, 33, 25, .2);
+  transition: background .15s var(--ease);
+}
+.patio-btn:hover { background: var(--terracotta-deep); }
+.patio-btn:active { box-shadow: var(--shadow-pressed); }
+.patio-btn:focus-visible { outline: 2px solid var(--ocre); outline-offset: 2px; }
+.patio-btn[disabled] { opacity: .55; cursor: default; }
+
+.patio-btn--ghost {
+  background: var(--stone-2);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.patio-btn--ghost:hover { background: var(--stone-1); }
+
+.patio-panel {
+  margin-top: var(--s-6);
+  padding: var(--s-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--stone-1);
+  box-shadow: var(--shadow-raised);
+}
+
+.patio-panel[hidden] { display: none; }
+
+.patio-panel__title {
+  margin: 0 0 var(--s-1);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.patio-panel__hint {
+  margin: 0 0 var(--s-4);
+  font-size: .8125rem;
+  color: var(--ink-soft);
+}
+
+.patio-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--s-3) var(--s-4);
+  align-items: end;
+}
+
+.patio-field { display: flex; flex-direction: column; gap: var(--s-1); }
+.patio-field--wide { grid-column: 1 / -1; }
+
+.patio-field > label {
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.patio-field input,
+.patio-field select {
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--stone-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: .875rem;
+  box-shadow: var(--shadow-pressed);
+}
+.patio-field input:focus-visible,
+.patio-field select:focus-visible {
+  outline: 2px solid var(--ocre);
+  outline-offset: 1px;
+}
+
+.patio-form__actions {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+}
+
+.patio-msg {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: .8125rem;
+  min-height: 1.2em;
+}
+.patio-msg--ok  { color: var(--celeste-deep); }
+.patio-msg--err { color: var(--wine); }
+
+/* --- 6. Footer: host facts --------------------------------------------- */
+
+.patio-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-5);
+  flex: none;
+  margin-top: auto;
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-label);
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  /* --ink-label: 2.66:1 was unreadable for the only text on the page that
+     tells you the machine is healthy. */
+  color: var(--ink-label);
+}
+.patio-foot b {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.patio-sr {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* --- Responsive -------------------------------------------------------- */
+
+@media (max-width: 34rem) {
+  .patio-page { padding: var(--s-4) var(--s-3) var(--s-7); }
+  .patio-header { padding: var(--s-5) var(--s-4) var(--s-4); }
+  .patio-tiles { grid-template-columns: 1fr; }
+  .patio-tile__stats { grid-template-columns: 1fr; gap: var(--s-2); }
+}
+
+/* --- 8. Reduced motion ------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .patio-tile { transition: none; }
+  .patio-tile:hover,
+  .patio-tile:focus-visible { transform: none; }
+  .patio-busy::after { display: none; }
+  .patio-btn { transition: none; }
+}

@@ -233,7 +233,8 @@ fi
 
 # Code and web assets: always refreshed (they are our own files).
 for f in bin/server.py bin/lytmctl lib/lytm_common.py lib/lytm_scan.py \
-         lib/lytm_worker.py web/index.html web/app.js web/style.css; do
+         lib/lytm_worker.py web/index.html web/app.js \
+         web/theme.css web/app.css; do
   if [ -f "$REPO_ROOT/$f" ]; then
     $SUDO install -m 0755 "$REPO_ROOT/$f" "$INSTALL_DIR/$f" 2>/dev/null \
       || { $SUDO cp "$REPO_ROOT/$f" "$INSTALL_DIR/$f"; $SUDO chmod 0755 "$INSTALL_DIR/$f"; }

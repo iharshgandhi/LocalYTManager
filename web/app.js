@@ -1,11 +1,15 @@
 /* LocalYTManager front end.
  *
- * No framework, no build step: the Pi serves these two static files as-is.
+ * No framework, no build step: the Pi serves these static files as-is.
+ * Styling comes from theme.css (Patio, shared with PiHome) plus app.css.
  *
  * State model: the Pi owns everything. This page never holds a download in
  * progress -- it POSTs a request, then polls /api/jobs. That is what lets the
  * user close the tab, refresh, or open another device entirely without
  * disturbing a transfer.
+ *
+ * LocalYTManager by Harsh Gandhi (harshgandhi.com) / Buho Smart Tools
+ * (buho.co.in). SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 const $ = (sel) => document.querySelector(sel);
@@ -35,13 +39,43 @@ function fmtDuration(sec) {
   return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
+function fmtBytes(n) {
+  if (n === null || n === undefined) return "—";
+  const u = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let v = Number(n), i = 0;
+  if (!v) return "0 B";
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
+}
+
+/* The reja mark for a state. Colour alone never carries state: the mark and
+   the text label always accompany it. */
+const REJA = {
+  ok: "reja-ok", busy: "reja-busy", warn: "reja-warn",
+  down: "reja-down", unknown: "reja-unknown",
+};
+const JOB_STATE = {
+  queued: "warn", running: "busy", done: "ok",
+  error: "down", cancelled: "unknown",
+};
+
+function reja(stateName, cls) {
+  const id = REJA[stateName] || REJA.unknown;
+  return `<svg class="${cls || ""}" width="20" height="20" aria-hidden="true"><use href="#${id}"/></svg>`;
+}
+
+/* ------------------------------------------------------------------ */
+/* toast                                                               */
+/* ------------------------------------------------------------------ */
+
 let toastTimer = null;
 function toast(msg, isErr) {
   const el = $("#toast");
   el.textContent = msg;
-  el.className = "toast" + (isErr ? " err" : "");
+  el.className = "ytm-toast" + (isErr ? " ytm-toast--err" : "");
+  el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.add("hidden"), 4200);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 4200);
 }
 
 async function api(path, opts) {
@@ -58,39 +92,68 @@ async function api(path, opts) {
 }
 
 /* ------------------------------------------------------------------ */
-/* tabs                                                               */
+/* tabs                                                                */
 /* ------------------------------------------------------------------ */
 
-$$(".tab").forEach((tab) => {
-  tab.addEventListener("click", () => {
-    $$(".tab").forEach((t) => t.classList.remove("active"));
-    $$(".panel").forEach((p) => p.classList.remove("active"));
-    tab.classList.add("active");
-    $(`#panel-${tab.dataset.tab}`).classList.add("active");
-    if (tab.dataset.tab === "library") loadLibrary();
-    if (tab.dataset.tab === "activity") pollJobs(true);
+const tabs = $$(".ytm-tab");
+
+function selectTab(name, focus) {
+  tabs.forEach((t) => {
+    const on = t.dataset.tab === name;
+    t.setAttribute("aria-selected", on ? "true" : "false");
+    if (on && focus) t.focus();
+  });
+  ["download", "library", "activity"].forEach((n) => {
+    $(`#panel-${n}`).hidden = n !== name;
+  });
+  if (name === "library") loadLibrary();
+  if (name === "activity") pollJobs(true);
+}
+
+tabs.forEach((tab) => {
+  tab.addEventListener("click", () => selectTab(tab.dataset.tab));
+  // Arrow-key navigation, which is what a tablist is expected to support.
+  tab.addEventListener("keydown", (e) => {
+    const i = tabs.indexOf(tab);
+    let next = null;
+    if (e.key === "ArrowRight") next = tabs[(i + 1) % tabs.length];
+    else if (e.key === "ArrowLeft") next = tabs[(i - 1 + tabs.length) % tabs.length];
+    else if (e.key === "Home") next = tabs[0];
+    else if (e.key === "End") next = tabs[tabs.length - 1];
+    if (next) { e.preventDefault(); selectTab(next.dataset.tab, true); }
   });
 });
 
 /* ------------------------------------------------------------------ */
-/* status + polling                                                   */
+/* status + polling                                                    */
 /* ------------------------------------------------------------------ */
 
 function renderStatus(st) {
   if (!st) return;
   state.status = st;
+
   $("#retention-hint").textContent = st.retention_days;
-  const free = st.free_disk ? ` · ${fmtBytes(st.free_disk.free)} free` : "";
+  $("#retention-note").textContent = `kept ${st.retention_days} days`;
+
+  const chip = $("#chip-retention");
+  chip.textContent = `${st.retention_days} day retention`;
+
+  const svc = $("#chip-service");
+  svc.textContent = `port ${st.port}`;
+  svc.className = "patio-chip patio-chip--live";
+
   $("#sub-status").textContent =
-    `yt-dlp ${st.yt_dlp} · kept ${st.retention_days} days · port ${st.port}${free}`;
+    `yt-dlp ${st.yt_dlp} on port ${st.port} — files stay on this Pi`;
+
+  $("#foot-ytdlp").textContent = st.yt_dlp || "—";
+  $("#foot-disk").textContent = st.free_disk ? fmtBytes(st.free_disk.free) : "—";
 }
 
-function fmtBytes(n) {
-  if (!n && n !== 0) return "?";
-  const u = ["B", "KiB", "MiB", "GiB", "TiB"];
-  let v = Number(n), i = 0;
-  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
-  return `${v.toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
+function renderCounts() {
+  const active = state.jobs.filter((j) => j.status === "running" || j.status === "queued").length;
+  $("#count-activity").textContent = active;
+  $("#count-library").textContent = state.library.length;
+  $("#foot-library").textContent = state.library.length;
 }
 
 async function refreshAll() {
@@ -101,8 +164,11 @@ async function refreshAll() {
     state.library = data.library || [];
     renderJobs();
     renderLibrary();
+    renderCounts();
   } catch (e) {
     $("#sub-status").textContent = "cannot reach the Pi — is the service running?";
+    $("#chip-service").textContent = "unreachable";
+    $("#chip-service").className = "patio-chip patio-chip--down";
   }
 }
 
@@ -111,6 +177,7 @@ async function loadLibrary() {
     const data = await api("/api/library");
     state.library = data.items || [];
     renderLibrary();
+    renderCounts();
   } catch (e) { /* surfaced by poll */ }
 }
 
@@ -122,6 +189,7 @@ async function pollJobs(force) {
     state.library = data.library || [];
     renderJobs();
     renderLibrary();
+    renderCounts();
   } catch (e) {
     if (force) toast("Cannot reach the server", true);
   }
@@ -133,14 +201,15 @@ async function pollJobs(force) {
 }
 
 /* ------------------------------------------------------------------ */
-/* scan                                                               */
+/* scan                                                                */
 /* ------------------------------------------------------------------ */
 
 function setScanStatus(msg, cls) {
   const el = $("#scan-status");
-  if (!msg) { el.classList.add("hidden"); return; }
-  el.className = "scanstatus " + (cls || "");
+  if (!msg) { el.hidden = true; el.textContent = ""; return; }
+  el.className = "ytm-msg" + (cls ? " ytm-msg--" + cls : "");
   el.textContent = msg;
+  el.hidden = false;
 }
 
 $("#btn-scan").addEventListener("click", doScan);
@@ -150,8 +219,10 @@ async function doScan() {
   const url = $("#url").value.trim();
   if (!url) { toast("Paste a URL first", true); return; }
 
-  $("#btn-scan").disabled = true;
-  setScanStatus("Scanning with yt-dlp… this can take a few seconds on this Pi.", "busy");
+  const btn = $("#btn-scan");
+  btn.disabled = true;
+  btn.textContent = "Scanning…";
+  setScanStatus("Scanning with yt-dlp. This Pi is slow, so give it a few seconds.", "busy");
   $("#result").innerHTML = "";
 
   try {
@@ -169,7 +240,8 @@ async function doScan() {
   } catch (e) {
     setScanStatus(e.message, "err");
   } finally {
-    $("#btn-scan").disabled = false;
+    btn.disabled = false;
+    btn.textContent = "Scan";
   }
 }
 
@@ -180,36 +252,35 @@ function renderVideo(res) {
   const video = res.video || [];
 
   const facts = [
-    res.uploader,
-    fmtDuration(res.duration),
-    `${audio.length} audio / ${video.length} video options`,
-  ].filter(Boolean).map(esc).join(" · ");
-
-  const tabs = `
-    <div class="kindtabs">
-      <button class="kindtab" data-kind="audio">
-        🎧 Audio${audio.length ? ` (${audio.length})` : ""}
-      </button>
-      <button class="kindtab" data-kind="video">
-        🎬 Video${video.length ? ` (${video.length})` : ""}
-      </button>
-    </div>
-    <div id="fmt-area"></div>`;
+    res.uploader && `<span class="patio-chip">${esc(res.uploader)}</span>`,
+    res.duration && `<span class="patio-chip">${esc(fmtDuration(res.duration))}</span>`,
+    `<span class="patio-chip">${audio.length} audio · ${video.length} video</span>`,
+  ].filter(Boolean).join("");
 
   $("#result").innerHTML = `
-    <div class="card">
-      <div class="vhead">
-        <img class="vthumb" src="${esc(res.thumbnail || "")}"
-             alt="" onerror="this.style.visibility='hidden'">
-        <div class="vmeta">
-          <p class="vtitle">${esc(res.title)}</p>
-          <div class="vfacts">${facts}</div>
+    <div class="patio-panel patio-cornice ytm-result">
+      <div class="ytm-vhead">
+        <img class="ytm-vthumb" src="${esc(res.thumbnail || "")}" alt=""
+             onerror="this.style.visibility='hidden'">
+        <div class="ytm-vmeta">
+          <h2 class="ytm-vtitle" title="${esc(res.title)}">${esc(res.title)}</h2>
+          <div class="ytm-vfacts">${facts}</div>
         </div>
       </div>
-      ${tabs}
+      <div class="ytm-switch" role="tablist" aria-label="Media kind">
+        <button class="ytm-switch__btn" role="tab" data-kind="audio" aria-selected="false">
+          <span class="ytm-switch__name">Audio</span>
+          <span class="ytm-switch__count">${audio.length} option${audio.length === 1 ? "" : "s"}</span>
+        </button>
+        <button class="ytm-switch__btn" role="tab" data-kind="video" aria-selected="false">
+          <span class="ytm-switch__name">Video</span>
+          <span class="ytm-switch__count">${video.length} option${video.length === 1 ? "" : "s"}</span>
+        </button>
+      </div>
+      <div id="fmt-area"></div>
     </div>`;
 
-  $$(".kindtab").forEach((b) => b.addEventListener("click", () => {
+  $$(".ytm-switch__btn").forEach((b) => b.addEventListener("click", () => {
     state.kind = b.dataset.kind;
     state.selection = null;
     renderFormats();
@@ -224,49 +295,77 @@ function renderVideo(res) {
 function renderFormats() {
   const res = state.scan;
   if (!res || res.kind !== "video") return;
-  $$(".kindtab").forEach((b) =>
-    b.classList.toggle("active", b.dataset.kind === state.kind));
+  $$(".ytm-switch__btn").forEach((b) =>
+    b.setAttribute("aria-selected", b.dataset.kind === state.kind ? "true" : "false"));
 
   const list = state.kind === "audio" ? (res.audio || []) : (res.video || []);
   const area = $("#fmt-area");
   if (!area) return;
 
   if (!list.length) {
-    area.innerHTML = `<p class="hint">No ${state.kind} options were offered
-      for this video.</p>`;
+    area.innerHTML = `
+      <div class="ytm-options">
+        <p class="ytm-hint">No ${esc(state.kind)} options were offered for this video.</p>
+      </div>`;
     return;
   }
 
-  const rows = list.map((f, i) => `
-    <label class="qrow" data-idx="${i}">
-      <input type="radio" name="quality" value="${i}"
-             ${state.selection && state.selection.format_id === f.format_id ? "checked" : ""}>
-      <span class="qlabel">${esc(f.label)}</span>
-      <span class="qsize">${esc(state.kind === "audio"
-        ? (f.size ? fmtBytes(f.size) : "—")
-        : (f.quality_label || ""))}</span>
-    </label>`).join("");
+  const rows = list.map((f, i) => {
+      const sel = state.selection && state.selection.format_id === f.format_id;
+      const size = f.size ? fmtBytes(f.size) : "size unknown";
+      // Audio: bitrate leads, and the container is the detail. The size goes in
+      // the right-hand column, so it is NOT repeated in the meta line.
+      // Video: the resolution IS the headline, so it leads and the fps follows;
+      // most YouTube video formats report no size at all, so the right-hand
+      // column carries the container there instead.
+      const audio = state.kind === "audio";
+      const name = audio
+        ? `${esc(f.bitrate_label || "Audio")} &middot; ${esc(f.ext)}`
+        : `${esc(f.quality_label || f.label)}${f.needs_audio ? " + audio" : ""}`;
+      const meta = audio ? "—" : (esc(f.ext) + (f.fps >= 50 ? ` &middot; ${f.fps}fps` : ""));
+      const right = audio ? size : (f.size ? size : esc(f.ext));
+      return `
+        <label class="ytm-choice" data-idx="${i}" data-selected="${sel ? "true" : "false"}">
+          <input type="radio" name="quality" value="${i}" ${sel ? "checked" : ""}>
+          <span class="ytm-choice__text">
+            <span class="ytm-choice__name">${name}</span>
+            ${meta === "—" ? "" : `<span class="ytm-choice__meta">${meta}</span>`}
+          </span>
+          <span class="ytm-choice__size">${right}</span>
+        </label>`;
+    }).join("");
 
   area.innerHTML = `
-    <div class="qlist">${rows}</div>
-    <button class="btn primary" id="btn-download" disabled>
-      Download ${esc(state.kind)}
-    </button>`;
+    <div class="ytm-options">
+      <span class="ytm-options__label">
+        Choose ${state.kind === "audio" ? "an" : "a"} ${esc(state.kind)} quality
+      </span>
+      <div class="ytm-list" role="radiogroup" aria-label="${esc(state.kind)} quality">${rows}</div>
+      <div class="ytm-options__foot">
+        <button class="ytm-btn" id="btn-download" disabled>
+          Download ${esc(state.kind)}
+        </button>
+        <span class="ytm-options__note" id="opt-note">
+          Pick a quality to enable the download.
+        </span>
+      </div>
+    </div>`;
 
-  area.querySelectorAll(".qrow").forEach((row) => {
-    row.addEventListener("click", () => {
-      state.selection = list[Number(row.dataset.idx)];
-      area.querySelectorAll(".qrow").forEach((r) => r.classList.remove("sel"));
-      row.classList.add("sel");
-      row.querySelector("input").checked = true;
-      $("#btn-download").disabled = false;
-    });
-  });
+  const choices = $$(".ytm-choice", area);
+  const dl = $("#btn-download", area);
 
-  const dl = $("#btn-download");
-  if (dl) {
-    dl.addEventListener("click", () => queueSelection(res, state.selection));
-  }
+  choices.forEach((row) => row.addEventListener("click", () => {
+    state.selection = list[Number(row.dataset.idx)];
+    choices.forEach((r) => r.setAttribute("data-selected", "false"));
+    row.setAttribute("data-selected", "true");
+    row.querySelector("input").checked = true;
+    if (dl) {
+      dl.disabled = false;
+      $("#opt-note").textContent = `Ready — ${state.selection.label || ""}`;
+    }
+  }));
+
+  if (dl) dl.addEventListener("click", () => queueSelection(res, state.selection));
 }
 
 async function queueSelection(res, fmt) {
@@ -291,8 +390,9 @@ async function queueSelection(res, fmt) {
           || (state.kind === "audio" ? (fmt.size || null) : null),
       }),
     });
-    toast(`Queued: ${res.title} (${data.queued})`);
+    toast(`Queued: ${res.title}`);
     pollJobs(true);
+    selectTab("activity");
   } catch (e) {
     toast(e.message, true);
     if (btn) { btn.disabled = false; btn.textContent = `Download ${state.kind}`; }
@@ -304,32 +404,35 @@ async function queueSelection(res, fmt) {
 function renderPlaylist(res) {
   const entries = res.entries || [];
   $("#result").innerHTML = `
-    <div class="card">
-      <div class="plhead">
+    <div class="patio-panel patio-cornice ytm-result">
+      <div class="ytm-panel__head">
         <div>
-          <h2>${esc(res.title)}</h2>
-          <div class="vfacts">${esc(res.uploader || "")} ·
-            ${entries.length} video${entries.length === 1 ? "" : "s"}</div>
+          <h2 class="ytm-vtitle" style="margin-top:0" title="${esc(res.title)}">${esc(res.title)}</h2>
+          <div class="ytm-vfacts">
+            ${res.uploader ? `<span class="patio-chip">${esc(res.uploader)}</span>` : ""}
+            <span class="patio-chip">${entries.length} video${entries.length === 1 ? "" : "s"}</span>
+          </div>
         </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn" id="pl-none">Clear</button>
-          <button class="btn" id="pl-all">Select all</button>
+        <div class="ytm-pl-tools">
+          <button class="ytm-btn ytm-btn--ghost ytm-btn--sm" id="pl-none" type="button">Clear</button>
+          <button class="ytm-btn ytm-btn--ghost ytm-btn--sm" id="pl-all" type="button">Select all</button>
         </div>
       </div>
-      <p class="hint" style="margin:0 0 12px">
-        Pick the videos you want now — everything is added to the queue and
-        downloads in the background. Or take just one at a time.
+
+      <p class="ytm-hint" style="margin:0 0 var(--s-3)">
+        Tick what you want. Everything is added to the queue and downloads in
+        the background — or use <b>Options</b> on one row to pick its exact quality.
       </p>
-      <div id="pl-list">
-        ${entries.map((e, i) => playlistRow(e, i)).join("")}
-      </div>
-      <div style="margin-top:16px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
-        <select id="pl-kind" style="flex:0 0 160px">
+
+      <div id="pl-list">${entries.map((e, i) => playlistRow(e, i)).join("")}</div>
+
+      <div class="ytm-pl-actions">
+        <select id="pl-kind" aria-label="Download as">
           <option value="audio">Audio only</option>
           <option value="video">Video</option>
         </select>
-        <button class="btn primary" id="pl-queue" disabled>Queue selected</button>
-        <span class="hint" id="pl-count" style="margin:0">0 selected</span>
+        <button class="ytm-btn" id="pl-queue" disabled type="button">Queue selected</button>
+        <span class="ytm-options__note" id="pl-count">0 selected</span>
       </div>
     </div>`;
 
@@ -370,8 +473,9 @@ function renderPlaylist(res) {
           force_audio: kind === "audio",
         }),
       });
-      toast(`Queued ${data.queued} download(s) from the playlist`);
+      toast(`Queued ${data.queued} download${data.queued === 1 ? "" : "s"}`);
       pollJobs(true);
+      selectTab("activity");
     } catch (e) {
       toast(e.message, true);
     } finally {
@@ -380,10 +484,9 @@ function renderPlaylist(res) {
     }
   });
 
-  // Per-item buttons: scan one entry and offer its real format list.
-  $$(".pl-scan").forEach((btn) => btn.addEventListener("click", () => {
-    const i = Number(btn.dataset.i);
-    const e = entries[i];
+  // Per-item: scan one entry and offer its real format list.
+  $$(".pl-scan").forEach((b) => b.addEventListener("click", () => {
+    const e = entries[Number(b.dataset.i)];
     $("#url").value = e.url || `https://www.youtube.com/watch?v=${e.video_id}`;
     $("#force-playlist").checked = false;
     doScan();
@@ -393,37 +496,36 @@ function renderPlaylist(res) {
 
 function playlistRow(e, i) {
   return `
-    <div class="plrow">
+    <div class="ytm-plrow">
       <input type="checkbox" id="plcb-${i}">
-      <img class="plthumb" src="${esc(e.thumbnail || "")}"
-           alt="" onerror="this.style.visibility='hidden'">
-      <div class="pltitle">
-        ${esc(e.title)}
-        <div style="color:var(--muted);font-size:12px">${esc(e.video_id)}</div>
+      <img class="ytm-plthumb" src="${esc(e.thumbnail || "")}" alt=""
+           onerror="this.style.visibility='hidden'">
+      <div class="ytm-pltext">
+        <div class="ytm-plname" title="${esc(e.title)}">${esc(e.title)}</div>
+        <div class="ytm-plid">${esc(e.video_id)}</div>
       </div>
-      <span class="pldur">${esc(fmtDuration(e.duration))}</span>
-      <button class="btn sm pl-scan" data-i="${i}">Options</button>
+      <span class="ytm-pldur">${esc(fmtDuration(e.duration))}</span>
+      <button class="ytm-btn ytm-btn--ghost ytm-btn--sm pl-scan" data-i="${i}"
+              type="button">Options</button>
     </div>`;
 }
 
 /* ------------------------------------------------------------------ */
-/* jobs / activity                                                    */
+/* jobs / activity                                                     */
 /* ------------------------------------------------------------------ */
 
 function renderJobs() {
   const jobs = state.jobs || [];
-  const active = jobs.filter((j) => j.status === "running" || j.status === "queued");
-  $("#job-count").textContent = active.length;
-
   const host = $("#jobs-list");
   if (!host) return;
+
   if (!jobs.length) {
-    host.innerHTML = `<div class="empty">Nothing queued yet.
-      Scan a URL and pick a quality to get started.</div>`;
+    host.innerHTML = `<div class="ytm-empty">
+      Nothing queued yet. Scan a URL and pick a quality to get started.
+    </div>`;
     return;
   }
-
-  host.innerHTML = jobs.map(jobRow).join("");
+  host.innerHTML = `<div class="ytm-jobs">${jobs.map(jobRow).join("")}</div>`;
 }
 
 function jobRow(j) {
@@ -431,56 +533,66 @@ function jobRow(j) {
   const pct = Number(j.percent || 0);
   const isLive = st === "running" || st === "queued";
   const noTotal = !j.total_bytes;
+  const title = j.title || j.video_id || "download";
 
-  let cls = "";
-  if (st === "done") cls = "done";
-  else if (st === "error" || st === "cancelled") cls = "err";
+  // A live job with no known total gets a travelling bar rather than a
+  // fabricated percentage — an invented number would be worse than an honest
+  // "I do not know how big this is".
+  const indet = isLive && noTotal;
+  const width = indet ? "" : `${st === "done" ? 100 : pct}%`;
 
-  // Live jobs with an unknown total get a travelling bar instead of a fake
-  // percentage — an invented number would be worse than an honest indeterminate.
-  const barCls = isLive && noTotal ? "indet" : cls;
-  const width = (isLive && noTotal) ? "" : `${st === "done" ? 100 : pct}%`;
-
-  let foot = "";
+  let actions = "";
   if (st === "done") {
-    const name = (j.result_path || "").split("/").pop();
-    foot = `
-      <a class="btn sm" href="/media/${encodeURI(j.result_path)}?dl=1">Download file</a>
-      <button class="btn sm" data-dismiss="${esc(j.id)}">Clear</button>`;
-  } else if (st === "queued") {
-    foot = `<button class="btn sm" data-cancel="${esc(j.id)}">Cancel</button>`;
+    actions = `
+      <a class="ytm-btn ytm-btn--sm" href="/media/${encodeURI(j.result_path)}?dl=1">Download file</a>
+      <button class="ytm-btn ytm-btn--ghost ytm-btn--sm" data-dismiss="${esc(j.id)}"
+              type="button">Clear</button>`;
   } else if (isLive) {
-    foot = `<button class="btn sm" data-cancel="${esc(j.id)}">Cancel</button>`;
+    actions = `<button class="ytm-btn ytm-btn--ghost ytm-btn--sm"
+        data-cancel="${esc(j.id)}" type="button">Cancel</button>`;
   }
 
   const bytes = j.total_bytes
     ? `${esc(j.downloaded_human)} / ${esc(j.total_human)}`
     : esc(j.downloaded_human || "");
-
-  const speed = j.speed ? `${fmtBytes(j.speed)}/s` : "";
+  const speed = j.speed ? fmtBytes(j.speed) + "/s" : "";
   const eta = (st === "running" && j.eta_human && j.eta_human !== "--")
-    ? `ETA ${esc(j.eta_human)}` : "";
+    ? "ETA " + esc(j.eta_human) : "";
+  const figures = [bytes, speed, eta].filter(Boolean).map(esc).join("  ·  ");
+  const pctText = (isLive && indet) ? "" : `  ·  ${pct.toFixed(1)}%`;
+  // Quality, bytes and speed are separate facts and must be separated. Joining
+  // the quality straight onto the byte count rendered "1080p60fps471.6 KiB".
+  const parts = [esc(j.quality || ""), figures, pctText]
+    .map((s) => s.trim()).filter(Boolean).join("  ·  ");
+
+  const msgCls = (st === "error" || st === "cancelled") ? " ytm-job__msg--err" : "";
 
   return `
-    <div class="jrow">
-      <img class="jthumb" src="https://i.ytimg.com/vi/${esc(j.video_id || "")}/mqdefault.jpg"
-           alt="" onerror="this.style.visibility='hidden'">
-      <div class="jbody">
-        <p class="jtitle">${esc(j.title || j.video_id || "download")}</p>
-        <p class="jmsg">${esc(j.message || j.phase || "")}</p>
-        <div class="bar"><div class="barfill ${barCls}" style="width:${width}"></div></div>
-        <div class="jfoot">
-          <span>
-            <span class="badge ${esc(j.kind)}">${esc(j.kind)}</span>
-            ${esc(j.quality || "")} · ${bytes}
-            ${speed ? " · " + speed : ""} ${eta ? " · " + eta : ""}
-            ${(!isLive && st === "done") ? "" :
-              (isLive && noTotal ? "" : " · " + pct.toFixed(1) + "%")}
+    <article class="ytm-job" data-state="${esc(st)}">
+      <img class="ytm-job__thumb"
+           src="https://i.ytimg.com/vi/${esc(j.video_id || "")}/mqdefault.jpg" alt=""
+           onerror="this.style.visibility='hidden'">
+      <div class="ytm-job__body">
+        <div class="ytm-job__top">
+          <div style="min-width:0">
+            <p class="ytm-job__name" title="${esc(title)}">${esc(title)}</p>
+            <p class="ytm-job__msg${msgCls}">${esc(j.message || j.phase || "")}</p>
+          </div>
+          ${reja(JOB_STATE[st], "patio-reja")}
+        </div>
+        <div class="ytm-bar">
+          <div class="ytm-bar__fill${indet ? " ytm-bar__fill--indet" : ""}"
+               style="--progress:${width}"></div>
+        </div>
+        <div class="ytm-job__foot">
+          <span class="ytm-job__figures">
+            <span class="patio-chip">${esc(j.kind)}</span>
+            ${parts}
           </span>
-          <span>${foot}</span>
+          <span class="ytm-job__actions">${actions}</span>
         </div>
       </div>
-    </div>`;
+    </article>`;
 }
 
 document.addEventListener("click", async (e) => {
@@ -497,12 +609,13 @@ document.addEventListener("click", async (e) => {
   }
   const dismiss = e.target.closest("[data-dismiss]");
   if (dismiss) {
-    dismiss.closest(".jrow").remove();
+    dismiss.closest(".ytm-job").remove();
+    renderCounts();
   }
 });
 
 /* ------------------------------------------------------------------ */
-/* library                                                            */
+/* library                                                             */
 /* ------------------------------------------------------------------ */
 
 function renderLibrary() {
@@ -516,58 +629,67 @@ function renderLibrary() {
     return true;
   });
 
-  $("#lib-count").textContent = state.library.length;
-
   const totalBytes = (state.library || []).reduce((a, m) => a + (m.bytes || 0), 0);
   const ret = state.status ? state.status.retention_days : 7;
   $("#lib-summary").textContent = state.library.length
-    ? `${state.library.length} item(s), ${fmtBytes(totalBytes)} on disk · ` +
-      `everything is erased automatically ${ret} days after download.`
+    ? `${state.library.length} item${state.library.length === 1 ? "" : "s"}, ` +
+      `${fmtBytes(totalBytes)} on disk · erased automatically ${ret} days after download.`
     : "";
 
   if (!items.length) {
-    grid.innerHTML = `<div class="empty">${
+    grid.innerHTML = `<div class="ytm-empty">${
       state.library.length
         ? "Nothing matches that filter."
-        : "No downloads yet. Completed files land here and stay available " +
-          `for ${ret} days.`
+        : `No downloads yet. Finished files land here and stay for ${ret} days.`
     }</div>`;
     return;
   }
 
-  grid.innerHTML = items.map((m) => {
-      // Prefer the thumbnail yt-dlp cached on the Pi; fall back to YouTube's.
-      const thumb = m.thumb
-        ? `/thumb/${encodeURI(m.thumb)}`
-        : `https://i.ytimg.com/vi/${encodeURI(m.video_id || "")}/mqdefault.jpg`;
-      const exp = m.expires_in_days == null ? "" :
-        (m.expires_in_days <= 1
-          ? `<span class="expires">expires ${m.expires_in_days}d</span>`
-          : `<span>${m.expires_in_days}d left</span>`);
-      return `
-        <div class="lcard" data-open="${m.id}">
-          <div class="lthumbwrap">
-            <img src="${esc(thumb)}" alt=""
-                 onerror="this.src='https://i.ytimg.com/vi/${encodeURI(m.video_id || '')}/mqdefault.jpg'">
-          <div class="lplay"><span>▶</span></div>
+  grid.innerHTML = `<div class="ytm-grid">${items.map(libraryCard).join("")}</div>`;
+}
+
+function libraryCard(m) {
+  const title = m.title || m.filename || "";
+  // Prefer the thumbnail yt-dlp cached on the Pi; fall back to YouTube's.
+  const thumb = m.thumb
+    ? `/thumb/${encodeURI(m.thumb)}`
+    : `https://i.ytimg.com/vi/${encodeURI(m.video_id || "")}/mqdefault.jpg`;
+  const fallback = `https://i.ytimg.com/vi/${encodeURI(m.video_id || "")}/mqdefault.jpg`;
+
+  const soon = m.expires_in_days != null && m.expires_in_days <= 1;
+  const expiry = m.expires_in_days == null ? "" : (soon
+    ? `expires ${m.expires_in_days}d`
+    : `${m.expires_in_days}d left`);
+
+  const facts = [m.quality, m.duration ? fmtDuration(m.duration) : ""]
+    .filter(Boolean).map(esc).join(" · ");
+
+  return `
+    <article class="ytm-card" data-open="${m.id}" tabindex="0" role="button"
+             aria-label="Preview ${esc(title)}">
+      <div class="ytm-card__thumb">
+        <span class="patio-chip ytm-card__kind">${esc(m.kind)}</span>
+        <img src="${esc(thumb)}" alt="" loading="lazy"
+             onerror="this.src='${esc(fallback)}'">
+        <div class="ytm-card__play"><span>&#9654;</span></div>
+      </div>
+      <div class="ytm-card__body">
+        <p class="ytm-card__name" title="${esc(title)}">${esc(title)}</p>
+        <div class="ytm-card__facts">
+          <span class="ytm-card__size">${esc(m.bytes_human || "")}</span>
+          ${expiry ? `<span class="ytm-card__expiry${soon ? " ytm-card__expiry--soon" : ""}">${esc(expiry)}</span>` : ""}
         </div>
-        <div class="lbody">
-          <p class="ltitle">${esc(m.title || m.filename)}</p>
-          <div class="lfacts">
-            <span><span class="badge ${esc(m.kind)}">${esc(m.kind)}</span></span>
-            <span>${esc(m.bytes_human || "")}</span>
-          </div>
-          <div class="lfacts" style="margin-bottom:10px">
-            <span>${esc(m.quality || "")} ${m.duration ? "· " + fmtDuration(m.duration) : ""}</span>
-            ${exp}
-          </div>
-          <div class="lactions">
-            <button class="btn sm" data-dl="${esc(m.rel_path)}">Download</button>
-            <button class="btn sm danger" data-del="${m.id}">Delete</button>
-          </div>
+        <div class="ytm-card__facts" style="margin-bottom:0">
+          <span class="ytm-card__expiry">${facts}</span>
         </div>
-      </div>`;
-  }).join("");
+        <div class="ytm-card__actions">
+          <button class="ytm-btn ytm-btn--sm" data-dl="${esc(m.rel_path)}"
+                  type="button">Download</button>
+          <button class="ytm-btn ytm-btn--danger ytm-btn--sm" data-del="${m.id}"
+                  type="button">Delete</button>
+        </div>
+      </div>
+    </article>`;
 }
 
 $("#lib-search").addEventListener("input", renderLibrary);
@@ -598,6 +720,13 @@ document.addEventListener("click", async (e) => {
   if (card) openModal(Number(card.dataset.open));
 });
 
+// Keyboard equivalent of clicking a card.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const card = e.target.closest(".ytm-card[data-open]");
+  if (card) { e.preventDefault(); openModal(Number(card.dataset.open)); }
+});
+
 $("#btn-clean-expired").addEventListener("click", async () => {
   try {
     const data = await api("/api/clean", { method: "POST", body: "{}" });
@@ -618,58 +747,74 @@ $("#btn-clean-all").addEventListener("click", async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* modal preview                                                      */
+/* modal preview                                                       */
 /* ------------------------------------------------------------------ */
+
+let lastFocus = null;
 
 function openModal(id) {
   const m = (state.library || []).find((x) => x.id === id);
   if (!m) return;
-  closeModal();
 
+  const title = m.title || m.filename || "";
   const isVideo = m.kind === "video";
   const src = `/media/${encodeURI(m.rel_path)}`;
+  const poster = m.thumb
+    ? `/thumb/${encodeURI(m.thumb)}`
+    : `https://i.ytimg.com/vi/${encodeURI(m.video_id || "")}/mqdefault.jpg`;
+
   const player = isVideo
-    ? `<video controls preload="metadata" poster="${esc(
-        m.thumb ? `/thumb/${m.thumb}` : `https://i.ytimg.com/vi/${esc(m.video_id || "")}/mqdefault.jpg`
-      )}"><source src="${esc(src)}" type="video/mp4"></video>`
-    : `<audio controls preload="metadata" style="width:100%">
+    ? `<video controls preload="metadata" poster="${esc(poster)}">
+         <source src="${esc(src)}" type="video/mp4">
+       </video>`
+    : `<audio controls preload="metadata">
          <source src="${esc(src)}" type="audio/mp4">
        </audio>`;
 
-  const el = document.createElement("div");
-  el.className = "modal";
-  el.id = "modal";
+  const meta = [m.kind, m.quality, m.bytes_human,
+                m.duration ? fmtDuration(m.duration) : ""]
+               .filter(Boolean).map(esc).join(" · ");
+
+  const el = $("#modal");
+  lastFocus = document.activeElement;
   el.innerHTML = `
-    <div class="modalbox">
-      <div class="modalhead">
-        <div>
-          <h2>${esc(m.title || m.filename)}</h2>
-          <div class="mfacts">${esc(m.kind)} · ${esc(m.quality || "")} ·
-            ${esc(m.bytes_human || "")} ${m.duration ? "· " + fmtDuration(m.duration) : ""}</div>
+    <div class="ytm-modal__box">
+      <div class="ytm-modal__head">
+        <div style="min-width:0">
+          <h2 class="ytm-modal__title" id="modal-title" title="${esc(title)}">${esc(title)}</h2>
+          <p class="ytm-modal__meta">${meta}</p>
         </div>
-        <button class="btn sm" id="modal-close">Close</button>
+        <button class="ytm-btn ytm-btn--ghost ytm-btn--sm" id="modal-close"
+                type="button">Close</button>
       </div>
       ${player}
-      <div class="mfoot">
-        <span class="mfacts">
+      <div class="ytm-modal__foot">
+        <span class="ytm-modal__meta">
           ${m.expires_in_days != null
-            ? `auto-deleted in ${m.expires_in_days} day(s)` : ""}
+            ? `auto-deleted in ${m.expires_in_days} day${m.expires_in_days === 1 ? "" : "s"}`
+            : ""}
         </span>
-        <span style="display:flex;gap:9px">
-          <a class="btn primary" href="${esc(src)}?dl=1">Download file</a>
-          <a class="btn" href="${esc(m.source_url)}" target="_blank"
-             rel="noreferrer noopener">Open on YouTube</a>
+        <span style="display:flex; gap: var(--s-2); flex-wrap:wrap">
+          <a class="ytm-btn" href="${esc(src)}?dl=1">Download file</a>
+          <a class="ytm-btn ytm-btn--ghost" href="${esc(m.source_url)}"
+             target="_blank" rel="noreferrer noopener">Open on YouTube</a>
         </span>
       </div>
     </div>`;
-  document.body.appendChild(el);
+  el.hidden = false;
+
   el.addEventListener("click", (ev) => { if (ev.target === el) closeModal(); });
   $("#modal-close").addEventListener("click", closeModal);
+  $("#modal-close").focus();
 }
 
 function closeModal() {
   const el = $("#modal");
-  if (el) el.remove();
+  if (!el || el.hidden) return;
+  el.hidden = true;
+  el.innerHTML = "";
+  if (lastFocus && lastFocus.isConnected) lastFocus.focus();
+  lastFocus = null;
 }
 
 document.addEventListener("keydown", (e) => {
@@ -677,7 +822,7 @@ document.addEventListener("keydown", (e) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* boot                                                               */
+/* boot                                                                */
 /* ------------------------------------------------------------------ */
 
 refreshAll();

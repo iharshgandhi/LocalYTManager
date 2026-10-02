@@ -201,10 +201,79 @@ bin/lytmctl             control script
 lib/lytm_common.py      config, paths, SQLite schema, yt-dlp discovery
 lib/lytm_scan.py        URL -> the audio/video option tree
 lib/lytm_worker.py      the download queue and progress engine
-web/                    index.html, app.js, style.css (no framework)
+web/theme.css           Patio design system (upstream from PiHome, verbatim)
+web/app.css             this tool's components, layered on those tokens
+web/index.html          the page
+web/app.js              behaviour, no framework
 systemd/                two services + a retention timer
 scripts/                tests and live probes
 ```
+
+---
+
+## Tests
+
+```bash
+python3 scripts/test_progress.py    # 27 checks: progress monotonicity
+python3 scripts/test_find_output.py # 24 checks: output/thumbnail/debris selection
+```
+
+Both run offline against synthetic data — no Pi and no network needed.
+
+`scripts/e2e.sh` and `scripts/progress_test.sh` are live end-to-end probes
+against the running service.
+
+---
+
+## The interface
+
+Built on **Patio**, the tiles-and-terracotta theme from
+[PiHome](https://github.com/iharshgandhi/PiHome) — the same design language as
+the Pi's home page, so the two feel like one appliance.
+
+The theme is `web/theme.css`, carried over verbatim from PiHome; this tool's own
+components live in `web/app.css`. Nothing hardcodes a colour or a size: every
+value comes from a theme token.
+
+Buenos Aires architecture supplies the vocabulary, and it is applied rather than
+decorated:
+
+| Element | Where it comes from | How it shows up here |
+| --- | --- | --- |
+| **Ladrillo visto** | exposed red brick, the standard BA wall | fine brick texture on the header |
+| **Azulejo** | painted ceramic, shopfronts and stations | four-petal rosette behind the header |
+| **Cornisa** | where a facade meets the sky | 3D top edge on the header and every panel |
+| **Baranda** | balcony railing | the hairline under each section head |
+| **Reja** | wrought-iron grille, on every window | the status mark beside each download |
+| **Azulejo** / **ladrillo** | — | pure CSS, no image files |
+
+A card is a **facade**: cornice on top, wall below, plinth at the bottom, and a
+lit window showing the state. A tile is the *featured* video; a library item is
+a *window* onto a file.
+
+Three things the theme forced, which are worth keeping:
+
+* **State is never colour alone.** Every state also changes the `reja` mark and
+  sets a text label, so it reads without colour vision and in a screenshot.
+* **Truncated text always carries `title`.** Line clamping destroys the string;
+  a sighted user must be able to read it back.
+* **A percentage is never invented.** Where the total size is unknowable the bar
+  runs indeterminate rather than showing a number that is not real.
+
+Layout is a single fluid column — it reads well on a phone in the same hand as a
+kiosk browser next to the Pi, and there is no horizontal overflow down to 390px
+(verified by measuring every element against its container, not by eye).
+
+### Accessibility
+
+Real `<button>`, `<input>` and `<a>` elements throughout; a proper `tablist` with
+arrow-key navigation; labelled form controls; `aria-live` on the toast; modal
+focus moved on open and restored on close; visible ochre focus rings on every
+interactive element; and WCAG AA contrast, measured rather than assumed (stat
+labels 5.20:1, headline 12.71:1).
+
+`prefers-reduced-motion` disables the card lift, the bar transition and the
+indeterminate sweep.
 
 ---
 
